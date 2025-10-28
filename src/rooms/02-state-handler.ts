@@ -2,6 +2,9 @@ import { Room, Client } from "colyseus";
 import { Schema, type, MapSchema } from "@colyseus/schema";
 
 export class Player extends Schema {
+    @type("int8")
+    hp = 0;
+
     @type("number")
     speed = 0;
 
@@ -39,6 +42,7 @@ export class State extends Schema {
 
     createPlayer(sessionId: string, data: any) {
         const player = new Player();
+        player.hp = data.hp
         player.speed = data.speed
         this.players.set(sessionId, player);
     }
