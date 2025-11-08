@@ -2,6 +2,9 @@ import { Room, Client } from "colyseus";
 import { Schema, type, MapSchema } from "@colyseus/schema";
 
 export class Player extends Schema {
+    @type("int8")
+    skin = 0;
+
     @type("int16")
     loss = 0;
 
@@ -15,13 +18,13 @@ export class Player extends Schema {
     speed = 0;
 
     @type("number")
-    pX = Math.floor(Math.random() * 50) - 25;
+    pX = 0;
 
     @type("number")
     pY = 0;
     
     @type("number")
-    pZ = Math.floor(Math.random() * 50) - 25;
+    pZ = 0;
     
     @type("number")
     vX = 0;
@@ -61,28 +64,16 @@ export class State extends Schema {
     private spawnUsed: Set<number> = new Set<number>();
 
     // создаём игрока
-    createPlayer(sessionId: string, data: any) {
+    createPlayer(sessionId: string, data: any, skin: number) {
         const player = new Player();
+        player.skin = skin;
         player.maxHP = data.hp;
         player.currentHP = data.hp;
         player.speed = data.speed;
-
-        // ищем первую свободную точку
-        let spawnIndex = 0;
-        while (this.spawnUsed.has(spawnIndex) && spawnIndex < this.spawnPoints.length) {
-            spawnIndex++;
-        }
-
-        // если все заняты — fallback на 0
-        if (spawnIndex >= this.spawnPoints.length) spawnIndex = 0;
-
-        this.spawnUsed.add(spawnIndex);
-        player.spawnIndex = spawnIndex;
-
-        const { x, z } = this.spawnPoints[spawnIndex];
-        player.pX = x;
-        player.pY = 0;
-        player.pZ = z;
+        player.pX = data.pX;
+        player.pY = data.pY;
+        player.pZ = data.pZ;
+        player.rY = data.rY;
 
         this.players.set(sessionId, player);
     }
@@ -140,9 +131,33 @@ export class State extends Schema {
 
 export class StateHandlerRoom extends Room<State> {
     maxClients = 8;
+    spawnPointCount = 8;
+    skins: number[] = [0]
+
+    mixArray(arr){
+    var currentIndex = arr.length;
+    var tmpValue, randomIndex;
+
+    // Пока остаются элементы для перемешивания
+    while(currentIndex != 0){
+        randomIndex = Math.floor(Math.random() * currentIndex);
+        currentIndex -= 1;
+        tmpValue = arr[currentIndex];
+        arr[currentIndex] = arr[randomIndex];
+        arr[randomIndex] = tmpValue;
+    }
+}
 
     onCreate(options) {
         console.log("StateHandlerRoom created!");
+
+        for (var i = 1; i < options.skins; i++){
+            this.skins.push(i)
+        }
+        this.mixArray(this.skins)
+
+        this.spawnPointCount = options.points;
+
         this.setState(new State());
 
         this.onMessage("move", (client, data) => {
@@ -169,27 +184,8 @@ export class StateHandlerRoom extends Room<State> {
 
             for (var i = 0; i < this.clients.length; i++) {
                 if (this.clients[i].id != clientID) continue;
-
-                 // сохраняем старый индекс, но НЕ освобождаем его пока не назначим новый
-                const prevIndex = player.spawnIndex;
-
-                // получаем новую точку (отличную от prevIndex, если возможно)
-                const nextSpawn = this.state.getNextSpawnPoint(prevIndex);
-
-                // назначаем игроку новую точку
-                player.spawnIndex = nextSpawn.index;
-                player.pX = nextSpawn.x;
-                player.pZ = nextSpawn.z;
-                player.pY = 0;
-
-                // теперь можем освободить старый слот (если он существует и отличается от нового)
-                if (prevIndex !== -1 && prevIndex !== nextSpawn.index) {
-                    this.state.releaseSpawn(prevIndex);
-                }
-
-
-                const message = JSON.stringify({ x: player.pX, z: player.pZ });
-                this.clients[i].send("Restart", message);
+                const point = Math.floor(Math.random() * this.spawnPointCount);
+                this.clients[i].send("Restart", point);
                 break
             }
 
@@ -202,9 +198,9 @@ export class StateHandlerRoom extends Room<State> {
 
     onJoin(client: Client, data: any) {
         if(this.clients.length > this.maxClients) this.lock();
-
-        client.send("hello", "world");
-        this.state.createPlayer(client.sessionId, data);
+        console.log('this.skins', this.skins)
+        const skin = this.skins[this.clients.length - 1]
+        this.state.createPlayer(client.sessionId, data, skin);
     }
 
     onLeave(client: Client) {
